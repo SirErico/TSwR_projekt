@@ -2,6 +2,9 @@
 Porównanie uczenia ze wzmocnieniem a klasycznego sterowania z linearyzacją przez sprzężenie zwrotne
 
 Projekt oparty na środowisku [mujoco](https://gymnasium.farama.org/environments/mujoco/reacher/)
+
+![mujoco reacher](https://gymnasium.farama.org/_images/reacher.gif)
+
 ### Założenia:
 1. Nauczenie się ze wzmocnieniem jak najszybszego osiągnięcia celu
 
