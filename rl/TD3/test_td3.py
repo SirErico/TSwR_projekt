@@ -5,19 +5,10 @@ import numpy as np
 import time
 import os
 
-# Set up directories
 ALGO_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(ALGO_DIR, "models/best_model/best_model")
 
 def evaluate_model(model: TD3, env: gym.Env, episodes: int = 10) -> None:
-    """
-    Evaluate a trained model on the environment.
-    
-    Args:
-        model: Trained TD3 model
-        env: Gymnasium environment
-        episodes: Number of episodes to evaluate
-    """
     total_rewards = []
 
     for ep in range(episodes):
@@ -39,21 +30,15 @@ def evaluate_model(model: TD3, env: gym.Env, episodes: int = 10) -> None:
     print(f"Standard Deviation: {np.std(total_rewards):.2f}")
 
 def main():
-    # Create and wrap the environment
     env = gym.make("Reacher-v5", render_mode="human")
     
-    # Load the trained model
     try:
         model = TD3.load(MODEL_PATH)
     except FileNotFoundError:
         print(f"Error: Could not find model at {MODEL_PATH}")
         return
 
-    # Evaluate the model
-    try:
-        evaluate_model(model, env)
-    finally:
-        env.close()
+    evaluate_model(model, env)
 
 if __name__ == "__main__":
     main()

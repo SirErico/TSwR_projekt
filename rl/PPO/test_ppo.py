@@ -6,19 +6,10 @@ import time
 import os
 from typing import Callable
 
-# Set up directories
 ALGO_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(ALGO_DIR, "models/best_model/best_model")
 
 def evaluate_model(model: PPO, env: gym.Env, episodes: int = 10) -> None:
-    """
-    Evaluate a trained model on the environment.
-    
-    Args:
-        model: Trained PPO model
-        env: Gymnasium environment
-        episodes: Number of episodes to evaluate
-    """
     total_rewards = []
 
     for ep in range(episodes):
@@ -40,19 +31,15 @@ def evaluate_model(model: PPO, env: gym.Env, episodes: int = 10) -> None:
     print(f"Standard Deviation: {np.std(total_rewards):.2f}")
 
 def main():
-    # Create and wrap the environment
     env = gym.make("Reacher-v5", render_mode="human")
-    
-    # Load the trained model
+
     try:
         model = PPO.load(MODEL_PATH)
     except FileNotFoundError:
         print(f"Error: Could not find model at {MODEL_PATH}")
         return
 
-    # Evaluate the model
     evaluate_model(model, env)
-
 
 if __name__ == "__main__":
     main()

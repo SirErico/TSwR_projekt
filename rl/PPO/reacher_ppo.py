@@ -2,7 +2,7 @@ import gymnasium as gym
 import matplotlib.pyplot as plt
 import time
 from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import EvalCallback
+from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 import os
@@ -10,8 +10,11 @@ import os
 ALGO_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(ALGO_DIR, "models")
 LOG_DIR = os.path.join(ALGO_DIR, "logs")
+TENSORBOARD_DIR = os.path.join(LOG_DIR, "tensorboard")
 os.makedirs(MODEL_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
+os.makedirs(TENSORBOARD_DIR, exist_ok=True)
+
 
 def make_env():
     env = gym.make("Reacher-v5")
@@ -41,11 +44,13 @@ policy_kwargs = dict(
 )
 
 # Multi Layer Perceptron Policy with custom architecture
+# Using CPU for PPO is faster than GPU
 model = PPO(
     "MlpPolicy",
     env,
     policy_kwargs=policy_kwargs,
-    **ppo_params)
+    tensorboard_log=TENSORBOARD_DIR,
+    **ppo_params, device="cpu")
 
 eval_callback = EvalCallback(
     env,
@@ -56,10 +61,16 @@ eval_callback = EvalCallback(
     render=False
 )
 
-total_timesteps = 50000
+checkpoint_callback = CheckpointCallback(
+    save_freq=10000,
+    save_path=MODEL_DIR,
+    name_prefix="ppo_reacher_checkpoint"
+)
+
+total_timesteps = 200000
 model.learn(
     total_timesteps=total_timesteps,
-    callback=eval_callback,
+    callback=[eval_callback, checkpoint_callback],
     progress_bar=True)
 
 # Save the model

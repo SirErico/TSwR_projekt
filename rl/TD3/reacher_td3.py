@@ -12,8 +12,10 @@ from typing import Callable
 ALGO_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(ALGO_DIR, "models")
 LOG_DIR = os.path.join(ALGO_DIR, "logs")
+TENSORBOARD_DIR = os.path.join(LOG_DIR, "tensorboard")
 os.makedirs(MODEL_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
+os.makedirs(TENSORBOARD_DIR, exist_ok=True)
 
 def make_env() -> Callable:
     """Create a Reacher environment with monitoring."""
@@ -60,6 +62,7 @@ model = TD3(
     "MlpPolicy",
     env,
     policy_kwargs=policy_kwargs,
+    tensorboard_log=TENSORBOARD_DIR,
     **td3_params
 )
 
@@ -73,7 +76,7 @@ eval_callback = EvalCallback(
 )
 
 # Train the model
-total_timesteps = 50000  
+total_timesteps = 300000  
 model.learn(
     total_timesteps=total_timesteps,
     callback=eval_callback,
