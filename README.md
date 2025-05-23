@@ -8,8 +8,8 @@ Projekt wykorzystuje środowisko [Reacher (Mujoco)](https://gymnasium.farama.org
   <img src="https://gymnasium.farama.org/_images/reacher.gif" alt="mujoco reacher" width="400">
 </p>
 
-[More about the MuJoCo Reacher environment](reacher_info.md)
-
+- [More about the MuJoCo Reacher environment](reacher_info.md)
+- [RL algorithms we used](rl/rl_algorithms.md)
 ---
 
 ## 🎯 Cele projektu
