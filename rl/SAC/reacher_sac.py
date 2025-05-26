@@ -1,10 +1,9 @@
 import gymnasium as gym
 import numpy as np
 from stable_baselines3 import SAC
-from stable_baselines3.common.callbacks import EvalCallback
+from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
-from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
 import os
 from typing import Callable
 
@@ -23,16 +22,22 @@ def make_env() -> Callable:
     env = Monitor(env, LOG_DIR)
     return env
 
+def linear_schedule(initial_value: float, final_value: float):
+    """Linear learning rate schedule."""
+    def schedule(progress_remaining: float) -> float:
+        return final_value + progress_remaining * (initial_value - final_value)
+    return schedule
+
 # Create vectorized environment
 env = DummyVecEnv([make_env])
 
 sac_params = {
-    "learning_rate": 3e-4,
+    "learning_rate": linear_schedule(3e-4, 1e-4),
     "buffer_size": 1_000_000,
     "learning_starts": 10000,
     "batch_size": 256,
-    "tau": 0.005,
-    "gamma": 0.99,
+    "tau": 0.005, # target smoothing coef
+    "gamma": 0.99, # discount factor
     "train_freq": 1,
     "gradient_steps": 1,
     "ent_coef": "auto",  # Automatic entropy tuning
@@ -53,6 +58,7 @@ model = SAC(
     env,
     policy_kwargs=policy_kwargs,
     tensorboard_log=TENSORBOARD_DIR,
+    device="cuda",
     **sac_params
 )
 
@@ -65,11 +71,17 @@ eval_callback = EvalCallback(
     render=False
 )
 
+checkpoint_callback = CheckpointCallback(
+    save_freq=50000,
+    save_path=MODEL_DIR,
+    name_prefix="sac_reacher_checkpoint"
+)
+
 # Train the model
-total_timesteps = 300000
+total_timesteps = 600000
 model.learn(
     total_timesteps=total_timesteps,
-    callback=eval_callback,
+    callback=[eval_callback, checkpoint_callback],
     progress_bar=True
 )
 

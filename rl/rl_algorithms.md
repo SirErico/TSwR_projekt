@@ -33,7 +33,6 @@ PPO is an on-policy algorithm that:
 SAC is an off-policy algorithm that:
 - Maximizes both expected return and entropy
 - Uses soft Q-learning and double Q-networks
-- Automatically tunes temperature parameter
 - Performs well in exploration-heavy tasks
 
 Key features:

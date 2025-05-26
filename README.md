@@ -43,3 +43,8 @@ source venv/bin/activate
 ```bash
 pip install -r requirements.txt
 ```
+
+### Tensorboard
+```bash
+tensorboard --logdir .rl/[RL_ALGORITHM]/logs/
+```

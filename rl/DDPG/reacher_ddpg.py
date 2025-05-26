@@ -1,7 +1,7 @@
 import gymnasium as gym
 import numpy as np
 from stable_baselines3 import DDPG
-from stable_baselines3.common.callbacks import EvalCallback
+from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
@@ -72,12 +72,17 @@ eval_callback = EvalCallback(
     deterministic=True,
     render=False
 )
+checkpoint_callback = CheckpointCallback(
+    save_freq=50000,
+    save_path=MODEL_DIR,
+    name_prefix="ppo_reacher_checkpoint"
+)
 
 # Train the model
-total_timesteps = 300000
+total_timesteps = 600000
 model.learn(
     total_timesteps=total_timesteps,
-    callback=eval_callback,
+    callback=[eval_callback, checkpoint_callback],
     progress_bar=True
 )
 

@@ -1,7 +1,7 @@
 import gymnasium as gym
 import numpy as np
 from stable_baselines3 import TD3
-from stable_baselines3.common.callbacks import EvalCallback
+from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.noise import NormalActionNoise
@@ -27,15 +27,15 @@ def make_env() -> Callable:
 env = DummyVecEnv([make_env])
 
 # Action noise for exploration
-n_actions = env.action_space.shape[0]
+n_actions = env.action_space.shape[-1]
 action_noise = NormalActionNoise(
     mean=np.zeros(n_actions),
-    sigma=0.1 * np.ones(n_actions)
+    sigma=0.2 * np.ones(n_actions)
 )
 
 # TD3 parameters
 td3_params = {
-    "learning_rate": 3e-4,
+    "learning_rate": 1e-3,
     "buffer_size": 1_000_000,
     "learning_starts": 10000,
     "batch_size": 256,
@@ -63,6 +63,7 @@ model = TD3(
     env,
     policy_kwargs=policy_kwargs,
     tensorboard_log=TENSORBOARD_DIR,
+    device="cuda",
     **td3_params
 )
 
@@ -70,16 +71,20 @@ eval_callback = EvalCallback(
     env,
     best_model_save_path=os.path.join(MODEL_DIR, "best_model"),
     log_path=LOG_DIR,
-    eval_freq=5000,
+    eval_freq=10000,
     deterministic=True,
     render=False
 )
-
+checkpoint_callback = CheckpointCallback(
+    save_freq=100000,
+    save_path=MODEL_DIR,
+    name_prefix="td3_reacher_checkpoint"
+)
 # Train the model
-total_timesteps = 300000  
+total_timesteps = 700000  
 model.learn(
     total_timesteps=total_timesteps,
-    callback=eval_callback,
+    callback=[eval_callback, checkpoint_callback],
     progress_bar=True
 )
 

@@ -62,12 +62,12 @@ eval_callback = EvalCallback(
 )
 
 checkpoint_callback = CheckpointCallback(
-    save_freq=10000,
+    save_freq=50000,
     save_path=MODEL_DIR,
     name_prefix="ppo_reacher_checkpoint"
 )
 
-total_timesteps = 200000
+total_timesteps = 600000
 model.learn(
     total_timesteps=total_timesteps,
     callback=[eval_callback, checkpoint_callback],
