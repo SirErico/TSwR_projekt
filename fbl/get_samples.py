@@ -11,7 +11,7 @@ def get_samples():
     prev_qvel = None
     dt = env.unwrapped.model.opt.timestep
 
-
+    # add some more nudges? wymuszenia
     for _ in range(1000):
         action = env.action_space.sample()
         observation, reward, terminated, truncated, info = env.step(action)
@@ -51,8 +51,7 @@ def regressor():
         # Regressor row for tau1
         y1 = [
             q1_ddot,  
-            2 * np.cos(q2) * q1_ddot + np.cos(q2)*q2_ddot - np.sin(q2) * q2_dot * q1_dot - 
-                np.sin(q2) * (q1_dot + q2_dot) * q2_dot,
+            2 * np.cos(q2) * q1_ddot - 2 * np.sin(q2) * q1_dot * q2_dot + np.cos(q2)*q2_ddot - np.sin(q2) * q2_dot**2,
             q2_ddot
         ]
 
