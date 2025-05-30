@@ -7,11 +7,16 @@ def get_samples():
     env = gym.make("Reacher-v5", render_mode="none")
     obs, _ = env.reset(seed=0)
 
-    data = []
+    data_dict = {
+        'q1': [], 'q2': [], 
+        'q1_dot': [], 'q2_dot': [], 
+        'q1_ddot': [], 'q2_ddot': [], 
+        'tau1': [], 'tau2': []
+    }
+    
     prev_qvel = None
     dt = env.unwrapped.model.opt.timestep
 
-    # add some more nudges? wymuszenia
     for _ in range(1000):
         action = env.action_space.sample()
         observation, reward, terminated, truncated, info = env.step(action)
@@ -20,33 +25,35 @@ def get_samples():
         torque = env.unwrapped.data.ctrl[:2].copy() 
 
         if prev_qvel is not None:
-            # calculate acceleration
-            qacc = (qvel - prev_qvel) / dt        
-            data.append(np.hstack([qpos, prev_qvel, qacc, torque]))
+            qacc = (qvel - prev_qvel) / dt
+            
+            data_dict['q1'].append(qpos[0])
+            data_dict['q2'].append(qpos[1])
+            data_dict['q1_dot'].append(prev_qvel[0])
+            data_dict['q2_dot'].append(prev_qvel[1])
+            data_dict['q1_ddot'].append(qacc[0])
+            data_dict['q2_ddot'].append(qacc[1])
+            data_dict['tau1'].append(torque[0])
+            data_dict['tau2'].append(torque[1])
 
         prev_qvel = qvel.copy()
 
     env.close()
 
-    # Save to CSV
-    with open("reacher_dynamics_samples.csv", "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["q1", "q2", "q1_dot", "q2_dot", "q1_ddot", "q2_ddot", "tau1", "tau2"])
-        writer.writerows(data)
+    df = pd.DataFrame(data_dict)
+    df.to_csv("reacher_dynamics_samples.csv", index=False)
+    return df
 
-def regressor():
-    df = pd.read_csv("reacher_dynamics_samples.csv")
-    Y, tau = [], []
+def regressor(df: pd.DataFrame):
+    Y, tau_list = [], []
 
     for _, row in df.iterrows():
-        q1 = row['q1']
-        q2 = row['q2']
-        q1_dot = row['q1_dot']
-        q2_dot = row['q2_dot']
-        q1_ddot = row['q1_ddot']
-        q2_ddot = row['q2_ddot']
-        tau1 = row['tau1']
-        tau2 = row['tau2']
+        q1 = row.q1
+        q2 = row.q2
+        q1_dot = row.q1_dot
+        q2_dot = row.q2_dot
+        q1_ddot = row.q1_ddot
+        q2_ddot = row.q2_ddot
 
         # Regressor row for tau1
         y1 = [
@@ -62,22 +69,29 @@ def regressor():
             q1_ddot + q2_ddot  
         ]
 
-        Y.append(y1)
-        Y.append(y2)
-
-        tau.append(tau1)
-        tau.append(tau2)
+        Y.extend([y1, y2])
+        tau_list.extend([row.tau1, row.tau2])
 
     Y = np.array(Y)
-    tau = np.array(tau)
+    tau = np.array(tau_list)
     
     # Estimate parameters
     p, _, _, _ = np.linalg.lstsq(Y, tau, rcond=None)
-    print("Estimated Parameters [alpha, beta, gamma]:", p)
+    results = pd.DataFrame({
+        'parameter': ['alpha', 'beta', 'gamma'],
+        'value': p,
+    })
+    
+    print("\nEstimated Parameters:")
+    print(results)
+    return results
         
 def main():
-    get_samples()
-    regressor()
+    df = get_samples()
+    print("\nSample Statistics:")
+    print(df.describe())
+    
+    results = regressor(df)
 
 if __name__ == "__main__":
     main()

@@ -7,7 +7,7 @@ import os
 from typing import Callable
 
 ALGO_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(ALGO_DIR, "models/best_model/best_model")
+MODEL_PATH = os.path.join(ALGO_DIR, "models/best_model/best_model_DDPG_2")
 
 def evaluate_model(model: DDPG, env: gym.Env, episodes: int = 10) -> None:
     total_rewards = []

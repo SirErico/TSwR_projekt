@@ -22,7 +22,7 @@ def C_hat(q, q_dot, alpha, beta, gamma):
 
 def feedback_linearization_control():
     # ESTIMATED VALUES
-    alpha, beta, gamma = 1.0, 0.5, 0.5
+    alpha, beta, gamma = 1.0, 0.1, 0.1
 
     env = gym.make("Reacher-v5", render_mode="human")
     # could get the target from the wrapper
