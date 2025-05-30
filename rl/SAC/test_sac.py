@@ -6,7 +6,7 @@ import time
 import os
 
 ALGO_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(ALGO_DIR, "models/best_model/best_model")
+MODEL_PATH = os.path.join(ALGO_DIR, "models/best_model/best_model_SAC_5")
 
 def evaluate_model(model: SAC, env: gym.Env, episodes: int = 10) -> None:
     total_rewards = []
