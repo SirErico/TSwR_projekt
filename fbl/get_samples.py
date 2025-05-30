@@ -1,6 +1,7 @@
 import gymnasium as gym
 import numpy as np
 import pandas as pd
+import math
 import csv
 
 def get_samples():
@@ -12,16 +13,92 @@ def get_samples():
     dt = env.unwrapped.model.opt.timestep
 
     # add some more nudges? wymuszenia
-    for _ in range(1000):
+    for _ in range(10000):
         action = env.action_space.sample()
         observation, reward, terminated, truncated, info = env.step(action)
-        qpos = env.unwrapped.data.qpos[:2].copy()   
-        qvel = env.unwrapped.data.qvel[:2].copy()   
-        torque = env.unwrapped.data.ctrl[:2].copy() 
+        qpos = env.unwrapped.data.qpos[:2].copy()
+        qvel = env.unwrapped.data.qvel[:2].copy()
+        torque = env.unwrapped.data.ctrl[:2].copy()
 
         if prev_qvel is not None:
             # calculate acceleration
-            qacc = (qvel - prev_qvel) / dt        
+            qacc = (qvel - prev_qvel) / dt
+            data.append(np.hstack([qpos, prev_qvel, qacc, torque]))
+
+        prev_qvel = qvel.copy()
+
+    for t in range(10000):
+        torque1 = math.sin(t * 0.05)
+        torque2 = math.cos(t * 0.05)
+        action = np.array([torque1, torque2], dtype=np.float32)
+        action = np.clip(action, -1.0, 1.0)
+
+        obs, reward, terminated, truncated, info = env.step(action)
+
+        qpos = env.unwrapped.data.qpos[:2].copy()
+        qvel = env.unwrapped.data.qvel[:2].copy()
+        torque = env.unwrapped.data.ctrl[:2].copy()
+
+        if prev_qvel is not None:
+            # calculate acceleration
+            qacc = (qvel - prev_qvel) / dt
+            data.append(np.hstack([qpos, prev_qvel, qacc, torque]))
+
+        prev_qvel = qvel.copy()
+
+    for t in range(10000):
+        torque1 = math.cos(t * 0.05)
+        torque2 = math.sin(t * 0.05)
+        action = np.array([torque1, torque2], dtype=np.float32)
+        action = np.clip(action, -1.0, 1.0)
+
+        obs, reward, terminated, truncated, info = env.step(action)
+
+        qpos = env.unwrapped.data.qpos[:2].copy()
+        qvel = env.unwrapped.data.qvel[:2].copy()
+        torque = env.unwrapped.data.ctrl[:2].copy()
+
+        if prev_qvel is not None:
+            # calculate acceleration
+            qacc = (qvel - prev_qvel) / dt
+            data.append(np.hstack([qpos, prev_qvel, qacc, torque]))
+
+        prev_qvel = qvel.copy()
+    
+    for t in range(1000):
+        torque1 = 1.0
+        torque2 = 1.0
+        action = np.array([torque1, torque2], dtype=np.float32)
+        action = np.clip(action, -1.0, 1.0)
+
+        obs, reward, terminated, truncated, info = env.step(action)
+
+        qpos = env.unwrapped.data.qpos[:2].copy()
+        qvel = env.unwrapped.data.qvel[:2].copy()
+        torque = env.unwrapped.data.ctrl[:2].copy()
+
+        if prev_qvel is not None:
+            # calculate acceleration
+            qacc = (qvel - prev_qvel) / dt
+            data.append(np.hstack([qpos, prev_qvel, qacc, torque]))
+
+        prev_qvel = qvel.copy()
+    
+    for t in range(1000):
+        torque1 = -1.0
+        torque2 = -1.0
+        action = np.array([torque1, torque2], dtype=np.float32)
+        action = np.clip(action, -1.0, 1.0)
+
+        obs, reward, terminated, truncated, info = env.step(action)
+
+        qpos = env.unwrapped.data.qpos[:2].copy()
+        qvel = env.unwrapped.data.qvel[:2].copy()
+        torque = env.unwrapped.data.ctrl[:2].copy()
+
+        if prev_qvel is not None:
+            # calculate acceleration
+            qacc = (qvel - prev_qvel) / dt
             data.append(np.hstack([qpos, prev_qvel, qacc, torque]))
 
         prev_qvel = qvel.copy()
@@ -50,16 +127,16 @@ def regressor():
 
         # Regressor row for tau1
         y1 = [
-            q1_ddot,  
-            2 * np.cos(q2) * q1_ddot - 2 * np.sin(q2) * q1_dot * q2_dot + np.cos(q2)*q2_ddot - np.sin(q2) * q2_dot**2,
+            q1_ddot,
+            np.cos(q2)*(2 * q1_ddot + q2_ddot) - np.sin(q2)* q2_dot * (2 * q1_dot + q2_dot),
             q2_ddot
         ]
 
         # Regressor row for tau2
         y2 = [
-            0.0, 
+            0.0,
             np.cos(q2) * q1_ddot + np.sin(q2) * q1_dot**2,
-            q1_ddot + q2_ddot  
+            q1_ddot + q2_ddot
         ]
 
         Y.append(y1)
@@ -70,10 +147,32 @@ def regressor():
 
     Y = np.array(Y)
     tau = np.array(tau)
+
+    np.set_printoptions(suppress=True)
     
     # Estimate parameters
     p, _, _, _ = np.linalg.lstsq(Y, tau, rcond=None)
-    print("Estimated Parameters [alpha, beta, gamma]:", p)
+    results = pd.DataFrame({
+        'parameter': ['alpha', 'beta', 'gamma'],
+        'value': p,
+    })
+    
+    print("\nEstimated Parameters:")
+    print(results)
+    print(p)
+
+    Y = np.linalg.pinv(Y)
+    
+    # Estimate parameters
+    p = Y @ tau
+    results1 = pd.DataFrame({
+        'parameter': ['alpha', 'beta', 'gamma'],
+        'value': p,
+    })
+    print("\nEstimated Parameters:")
+    print(results1)
+    print(p)
+
         
 def main():
     get_samples()
