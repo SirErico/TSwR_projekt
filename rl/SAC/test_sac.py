@@ -12,14 +12,18 @@ def evaluate_model(model: SAC, env: gym.Env, episodes: int = 10) -> None:
     total_rewards = []
 
     for ep in range(episodes):
+        steps = 0
         obs, _ = env.reset()
         done = False
         episode_reward = 0
         
         while not done:
+            steps += 1
             action, _state = model.predict(obs, deterministic=True)
             obs, reward, terminated, truncated, _ = env.step(action)
-            done = terminated or truncated
+            if abs(obs[8]) < 0.01 and abs(obs[9]) < 0.01:
+                print("num of steps: ",2 * steps)
+                done = True
             episode_reward += reward
             time.sleep(0.01)  #
             

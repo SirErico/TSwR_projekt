@@ -88,7 +88,7 @@ def feedback_linearization_control():
             """
             #done = terminated or truncated
             if abs(obs[8]) < 0.01 and abs(obs[9]) < 0.01 and abs(q_dot[0]) < 0.1 and abs(q_dot[1]) < 0.1:
-                print(2 * steps)
+                print("num of steps: ",2 * steps)
                 done = True
             time.sleep(0.01)  #
             # if terminated or truncated:
