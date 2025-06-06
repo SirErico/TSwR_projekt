@@ -4,6 +4,7 @@ models/
 logs/
 reacher_dynamics_samples.csv
 *.csv
+*.png
 
 
 
