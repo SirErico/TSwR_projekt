@@ -214,8 +214,6 @@ def regressor():
         q2_dot = row.q2_dot
         q1_ddot = row.q1_ddot
         q2_ddot = row.q2_ddot
-        tau1 = row.tau1
-        tau2 = row.tau2
 
         # Regressor row for tau1
         y1 = [
