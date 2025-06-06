@@ -31,6 +31,48 @@ def inverse_kinematics(xy_target, l1=0.1, l2=0.1):
     q1 = np.arctan2(y, x) - np.arctan2(k2, k1)
     return np.array([q1, q2])
 
+def ret_y(y, speed1, speed2 = -50000.0):
+    if speed2 == -50000.0:
+        speed2 = speed1
+    if y < 0:
+        return np.array([-speed1, -speed2])
+    else:
+        return np.array([speed1, speed2])
+
+def q_r_ddot_simple_traj(dist, y, q_r_dot, q_r, breaking, speed, steps, first_step, max_step):
+    # Breaking
+    """
+    if 0.02 < dist < breaking:
+        current_step = steps - first_step
+        current_speed = speed - ((current_step / max_step) * speed)
+        out_speed = (current_speed - speed) / current_step
+        return (ret_y(y, out_speed))
+    """
+    # Near target
+    if dist < 0.021:
+        return np.array([0,0])
+    else:
+        sp1 = 0.0
+        sp2 = 0.0
+        # Acceleration
+        if abs(q_r_dot[0] - q_r[0]) < 0.1:
+            sp1 = speed
+        # Enough speed
+        if abs(q_r_dot[1] - q_r[1]) < 0.1:
+            sp2 = speed
+        return ret_y(y, sp1, sp2)
+
+def q_r_dot_simple_traj(dist, y, steps, first_step, max_step, breaking, speed):
+    """
+    if 0.02 < dist < breaking:
+        current_step = steps - first_step
+        current_speed = speed - ((current_step / max_step) * speed)
+        return (ret_y(y, current_speed))
+    """
+    if dist < 0.021:
+        return np.array([0,0])
+    else:
+        return ret_y(y, speed)
 
 def feedback_linearization_control():
     np.set_printoptions(legacy='1.25') # Print bez  float64
@@ -45,7 +87,7 @@ def feedback_linearization_control():
 
     q_r = np.array([0.0, 0.0]) 
     q_r_dot = np.zeros(2)         
-    q_r_ddot = np.zeros(2) 
+    q_r_ddot = np.zeros(2)
 
     Kp = np.diag([10, 10])
     Kd = np.diag([5, 5])
@@ -61,21 +103,45 @@ def feedback_linearization_control():
         else:
             q_r = ik_result
         print("\nTarget position: ")
-        print(goal)
+        print(obs[8], obs[9])
         
+        first_step = 0
+        breaking = 0.1
         while not done:
+            dist = np.linalg.norm([obs[8], obs[9]])
+            if dist < breaking:
+                first_step = steps
+
             steps += 1
             q = env.unwrapped.data.qpos[:2].copy()
             q_dot = env.unwrapped.data.qvel[:2].copy()
 
-            v = q_r_ddot + Kd @ (q_r_dot - q_dot) + Kp @ (q_r - q)  # control
+            
+            print("\n New step ")
+            print("How close: ")
+            print(dist)
+            print("q_r_dot and q_r_ddot: ")
+            
+            q_r_dot = q_r_dot_simple_traj(dist, obs[9], steps, first_step, 30, breaking, 0.5)
+            print(q_r_dot)
 
+            q_r_ddot = q_r_ddot_simple_traj(dist, obs[9], q_r_dot, q_r, breaking, 0.5, steps, first_step, 30)
+            print(q_r_ddot)
+
+            v = q_r_ddot + Kd @ (q_r_dot - q_dot) + Kp @ (q_r - q)  # control
+            # v = q_r_dot
+            print("\nTarget position: ")
+            print(goal)
+            print("V: ")
+            print(v)
             # Compute dynamics
             M = M_hat(q, alpha, beta, gamma)
             C = C_hat(q, q_dot, alpha, beta, gamma)
 
             # Final torque
             tau = M @ v + C @ q_dot
+            print("Tau: ")
+            print(tau)
 
             # Clip to action space limits
             tau = np.clip(tau, env.action_space.low, env.action_space.high)
@@ -88,7 +154,7 @@ def feedback_linearization_control():
             """
             #done = terminated or truncated
             if abs(obs[8]) < 0.01 and abs(obs[9]) < 0.01 and abs(q_dot[0]) < 0.1 and abs(q_dot[1]) < 0.1:
-                print("num of steps: ",2 * steps)
+                print(steps)
                 done = True
             time.sleep(0.01)  #
             # if terminated or truncated:
