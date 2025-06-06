@@ -20,6 +20,7 @@ def C_hat(q, q_dot, alpha, beta, gamma):
     c22 = 0
     return np.array([[c11, c12], [c21, c22]])
 
+# link lengths (0.1) from mujoco docs 
 def inverse_kinematics(xy_target, l1=0.1, l2=0.1):
     x, y = xy_target
     D = (x**2 + y**2 - l1**2 - l2**2) / (2 * l1 * l2)
@@ -51,6 +52,7 @@ def feedback_linearization_control():
     Kd = np.diag([5, 5])
     episodes = 10
     for ep in range(episodes):
+        episode_reward = 0
         steps = 0
         obs, _ = env.reset()
         done = False
@@ -86,15 +88,26 @@ def feedback_linearization_control():
                 print("How close to the target: x, y")
                 print(obs[8], obs[9])
             """
-            #done = terminated or truncated
+            # done = terminated or truncated
+            # if close to traget or low velocity, then done
             if abs(obs[8]) < 0.01 and abs(obs[9]) < 0.01 and abs(q_dot[0]) < 0.1 and abs(q_dot[1]) < 0.1:
-                print("num of steps: ",2 * steps)
+                print("num of steps: ", steps)
                 done = True
             time.sleep(0.01)  #
+            episode_reward += reward
+
             # if terminated or truncated:
             #     break
+        print(f"Episode {ep + 1}: Total Reward: {episode_reward:.2f}")
 
     env.close()
     
 if __name__ == "__main__":
     feedback_linearization_control()
+    
+"""
+Dodać trajektorie
+jak szybko znalezione 
+jaki był koszt
+
+"""

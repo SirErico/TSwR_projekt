@@ -36,7 +36,7 @@ action_noise = OrnsteinUhlenbeckActionNoise(
 ddpg_params = {
     "learning_rate": 1e-3,
     "buffer_size": 1000000,
-    "learning_starts": 1000,
+    "learning_starts": 10000,
     "batch_size": 256,
     "tau": 0.005,
     "gamma": 0.99,

@@ -22,7 +22,7 @@ def evaluate_model(model: SAC, env: gym.Env, episodes: int = 10) -> None:
             action, _state = model.predict(obs, deterministic=True)
             obs, reward, terminated, truncated, _ = env.step(action)
             if abs(obs[8]) < 0.01 and abs(obs[9]) < 0.01:
-                print("num of steps: ",2 * steps)
+                print("num of steps: ", steps)
                 done = True
             episode_reward += reward
             time.sleep(0.01)  #

@@ -4,6 +4,7 @@ models/
 logs/
 reacher_dynamics_samples.csv
 *.csv
+*.png
 
 
 
@@ -179,3 +180,4 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+reacher_dynamics_samples.csv

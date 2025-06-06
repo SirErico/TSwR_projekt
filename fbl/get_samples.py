@@ -20,7 +20,7 @@ def get_samples():
     prev_qvel = None
     dt = env.unwrapped.model.opt.timestep
 
-    for _ in range(1000):
+    for _ in range(5000):
         action = env.action_space.sample()
         observation, reward, terminated, truncated, info = env.step(action)
         qpos = env.unwrapped.data.qpos[:2].copy()
@@ -72,7 +72,7 @@ def get_samples():
 
         prev_qvel = qvel.copy()
     
-    for t in range(1000):
+    for t in range(5000):
         torque1 = 1.0
         torque2 = 1.0
         action = np.array([torque1, torque2], dtype=np.float32)
@@ -91,7 +91,7 @@ def get_samples():
 
         prev_qvel = qvel.copy()
     
-    for t in range(1000):
+    for t in range(5000):
         torque1 = -1.0
         torque2 = -1.0
         action = np.array([torque1, torque2], dtype=np.float32)
@@ -158,7 +158,7 @@ def get_samples():
 
         prev_qvel = qvel.copy()
     
-    for t in range(1000):
+    for t in range(5000):
         torque1 = 1.0
         torque2 = 1.0
         action = np.array([torque1, torque2], dtype=np.float32)
@@ -198,13 +198,13 @@ def get_samples():
 
     env.close()
     # Save to CSV
-    with open("reacher_dynamics_samples.csv", "w", newline="") as f:
+    with open("reacher_samples.csv", "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["q1", "q2", "q1_dot", "q2_dot", "q1_ddot", "q2_ddot", "tau1", "tau2"])
         writer.writerows(data)
 
 def regressor():
-    df = pd.read_csv("reacher_dynamics_samples.csv")
+    df = pd.read_csv("reacher_samples.csv")
     Y, tau = [], []
 
     for _, row in df.iterrows():
@@ -239,16 +239,16 @@ def regressor():
 
     np.set_printoptions(suppress=True)
     
-    # Estimate parameters
-    p, _, _, _ = np.linalg.lstsq(Y, tau, rcond=None)
-    results = pd.DataFrame({
-        'parameter': ['alpha', 'beta', 'gamma'],
-        'value': p,
-    })
+    # # Estimate parameters
+    # p, _, _, _ = np.linalg.lstsq(Y, tau, rcond=None)
+    # results = pd.DataFrame({
+    #     'parameter': ['alpha', 'beta', 'gamma'],
+    #     'value': p,
+    # })
     
-    print("\nEstimated Parameters:")
-    print(results)
-    print(p)
+    # print("\nEstimated Parameters:")
+    # print(results)
+    # print(p)
 
     Y = np.linalg.pinv(Y)
     
