@@ -23,6 +23,11 @@ def get_end_effector_pos(env):
 def evaluate_model(model: DDPG, env: gym.Env, episodes: int = 10) -> None:
     total_rewards = []
 
+    # For plotting later
+    tau_sum = []
+    tau_quad_sum = []
+    tau_graph = []
+
     for ep in range(episodes):
         obs, _ = env.reset()
         done = False
@@ -31,6 +36,10 @@ def evaluate_model(model: DDPG, env: gym.Env, episodes: int = 10) -> None:
         
         
         # Initialize tracking lists
+        if ep == 0 or ep == 4 or ep == 9:
+            tau_graph_single = []
+        tau_sum_base = 0
+        tau_quad_sum_base = 0
         ee_positions = []
         target_positions = []
         distances = []
@@ -43,6 +52,12 @@ def evaluate_model(model: DDPG, env: gym.Env, episodes: int = 10) -> None:
             steps += 1
             action, _state = model.predict(obs, deterministic=True)
             obs, reward, terminated, truncated, _ = env.step(action)
+
+            tau_sum_base += action
+            tau_quad_sum_base += action ** 2
+            if ep == 0 or ep == 4 or ep == 9:
+                tau_graph_single.append(action)
+            
             done = terminated or truncated
             
             # Track data
@@ -117,14 +132,44 @@ def evaluate_model(model: DDPG, env: gym.Env, episodes: int = 10) -> None:
         plt.show()
 
     env.close()
+
+    # Added tau, tau^2 plots tau over time change. (Basically our cost of control)
     
+    # Plotting sum of tau and sum of tau^2 of each episode (and rewards)
+    figure, axis = plt.subplots(3, 2)
+    x = list(range(len(tau_sum)))
+    axis[0,0].bar(x, np.array(tau_sum)[:, 0])
+    axis[0,1].bar(x, np.array(tau_sum)[:, 1])
+    axis[1,0].bar(x, np.array(tau_quad_sum)[:, 0])
+    axis[1,1].bar(x, np.array(tau_quad_sum)[:, 1])
+    axis[2,0].bar(x, total_rewards)
+
+    plt.show()
+
+    # Plotting tau of 1st, 5th and 10th episode
+    figure, axis = plt.subplots(3, 1)
+    i = 0
+    for trajectory in tau_graph:
+        points = np.array(trajectory)
+        x = list(range(len(points[:, 0])))
+        axis[i].plot(x, points[:, 0] * 10000)  # x
+        axis[i].plot(x, points[:, 1] * 10000)  # y
+        axis[i].set_title("I: " + str(i))
+        axis[i].grid()
+        i += 1
+
+    plt.show()
     
     print(f"\nAverage Reward over {episodes} episodes: {np.mean(total_rewards):.2f}")
     print(f"Standard Deviation: {np.std(total_rewards):.2f}")
 
 def main():
+    # Added Seeding so that it's always the same (for comparison)
+    SEED = 42
     env = gym.make("Reacher-v5", render_mode="human")
-
+    env.reset(seed=SEED)
+    env.action_space.seed(SEED)
+    env.observation_space.seed(SEED)
     try:
         model = DDPG.load(MODEL_PATH)
     except FileNotFoundError:

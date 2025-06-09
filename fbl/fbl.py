@@ -1,6 +1,7 @@
 import gymnasium as gym
 import numpy as np
 import time
+import matplotlib.pyplot as plt
 
 def M_hat(q, alpha, beta, gamma):
     q2 = q[1]
@@ -102,7 +103,13 @@ def feedback_linearization_control():
     # ESTIMATED VALUES
     alpha, beta, gamma = 0.00263468, 0.00009852, 0.0013667 # 0.00263468, 0.00009852, 0.00013667 / 0.00254362, 0.00001777, 0.00029786
 
-    env = gym.make("Reacher-v5", max_episode_steps=150, render_mode="human")
+    # Added Seeding so that it's always the same (for comparison)
+    SEED = 42
+    env = gym.make("Reacher-v5", max_episode_steps=150)
+    env.reset(seed=SEED)
+    env.action_space.seed(SEED)
+    env.observation_space.seed(SEED)
+
     # could get the target from the wrapper
     # goal_pos = env.unwrapped.get_body_com("target")
 
@@ -111,7 +118,21 @@ def feedback_linearization_control():
     Kp = np.diag([30, 30])
     Kd = np.diag([10, 10])
     episodes = 10
+
+    # Lists for visualizations
+    tau_sum = []
+    tau_quad_sum = []
+    tau_graph = []
+    episode_reward_list = []
+    
     for ep in range(episodes):
+
+        # Local visualization variables
+        if ep == 0 or ep == 4 or ep == 9:
+            tau_graph_single = []
+        tau_sum_base = 0
+        tau_quad_sum_base = 0
+        
         episode_reward = 0
         steps = 0
         obs, _ = env.reset()
@@ -158,6 +179,12 @@ def feedback_linearization_control():
             # Clip to action space limits
             tau = np.clip(tau, env.action_space.low, env.action_space.high)
 
+            # Taking tau (cost to move, cost of control)
+            tau_sum_base += tau
+            tau_quad_sum_base += tau ** 2
+            if ep == 0 or ep == 4 or ep == 9:
+                tau_graph_single.append(tau)
+
             obs, reward, terminated, truncated, info = env.step(tau)
             """
             if terminated or truncated:
@@ -174,10 +201,41 @@ def feedback_linearization_control():
 
             # if terminated or truncated:
             #     break
+
+        # Appending to main lists after each episode
+        if ep == 0 or ep == 4 or ep == 9:
+            tau_graph.append(tau_graph_single)
+        tau_sum.append(tau_sum_base)
+        tau_quad_sum.append(tau_quad_sum_base)
+
         print(f"Episode {ep + 1}: Total Reward: {episode_reward:.2f}")
+        episode_reward_list.append(episode_reward)
 
     env.close()
-    
+
+    figure, axis = plt.subplots(3, 2)
+    x = list(range(len(tau_sum)))
+    axis[0,0].bar(x, np.array(tau_sum)[:, 0])
+    axis[0,1].bar(x, np.array(tau_sum)[:, 1])
+    axis[1,0].bar(x, np.array(tau_quad_sum)[:, 0])
+    axis[1,1].bar(x, np.array(tau_quad_sum)[:, 1])
+    axis[2,0].bar(x, episode_reward_list)
+
+    plt.show()
+
+    figure, axis = plt.subplots(3, 1)
+    i = 0
+    for trajectory in tau_graph:
+        points = np.array(trajectory)
+        x = list(range(len(points[:, 0])))
+        axis[i].plot(x, points[:, 0] * 10000)  # x
+        axis[i].plot(x, points[:, 1] * 10000)  # y
+        axis[i].set_title("I: " + str(i))
+        axis[i].grid()
+        i += 1
+
+    plt.show()
+
 if __name__ == "__main__":
     feedback_linearization_control()
     
