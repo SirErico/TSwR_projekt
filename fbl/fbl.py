@@ -45,49 +45,6 @@ def get_end_effector_pos(q):
     y = l1*np.sin(q1) + l2*np.sin(q1 + q2)
     return np.array([x, y])
 
-def ret_y(y, speed1, speed2 = -50000.0):
-    if speed2 == -50000.0:
-        speed2 = speed1
-    if y < 0:
-        return np.array([-speed1, -speed2])
-    else:
-        return np.array([speed1, speed2])
-
-def q_r_ddot_simple_traj(dist, y, q_r_dot, q_r, breaking, speed, steps, first_step, max_step):
-    # Breaking
-    """
-    if 0.02 < dist < breaking:
-        current_step = steps - first_step
-        current_speed = speed - ((current_step / max_step) * speed)
-        out_speed = (current_speed - speed) / current_step
-        return (ret_y(y, out_speed))
-    """
-    # Near target
-    if dist < 0.021:
-        return np.array([0,0])
-    else:
-        sp1 = 0.0
-        sp2 = 0.0
-        # Acceleration
-        if abs(q_r_dot[0] - q_r[0]) < 0.1:
-            sp1 = speed
-        # Enough speed
-        if abs(q_r_dot[1] - q_r[1]) < 0.1:
-            sp2 = speed
-        return ret_y(y, sp1, sp2)
-
-def q_r_dot_simple_traj(dist, y, steps, first_step, max_step, breaking, speed):
-    """
-    if 0.02 < dist < breaking:
-        current_step = steps - first_step
-        current_speed = speed - ((current_step / max_step) * speed)
-        return (ret_y(y, current_speed))
-    """
-    if dist < 0.021:
-        return np.array([0,0])
-    else:
-        return ret_y(y, speed)
-
 # check different T and the smallest taus/q_ddot?
 # tau nie wychodzi poza 1 (10 testow)
 def generate_trajectory(q_start, q_goal, T, dt):
@@ -157,7 +114,6 @@ def feedback_linearization_control():
         0.1 definitely too fast. tau gets too big
         around 0.25?
         """
-        
         while not done:
             q = env.unwrapped.data.qpos[:2].copy()
             q_dot = env.unwrapped.data.qvel[:2].copy()
@@ -181,7 +137,7 @@ def feedback_linearization_control():
             tau_noclip = M @ v + C @ q_dot
             episode_torques_noclip.append(tau_noclip)  # Store unclipped torque
             
-            # Liczenie kosztu energetycznego (energia = ∑ |tau ⋅ q_dot| * dt)
+            # Liczenie kosztu energetycznego (energia =  |tau ⋅ q_dot| * dt)
             step_cost = np.abs(np.dot(tau_noclip, q_dot)) * dt
             episode_cost += step_cost
 
@@ -215,7 +171,6 @@ def feedback_linearization_control():
         print(f"Episode {ep + 1}: Total Reward: {episode_reward:.2f}")
         # Here plots for each episode :)
         
-        # After episode ends, create plots
         episode_torques_noclip = np.array(episode_torques_noclip)
         time_steps = np.arange(len(episode_torques_noclip))
         
