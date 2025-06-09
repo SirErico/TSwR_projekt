@@ -4,8 +4,8 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 import numpy as np
 import time
 import os
-import matplotlib.pyplot as plt
 from typing import Callable
+import matplotlib.pyplot as plt
 
 ALGO_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(ALGO_DIR, "models/best_model/best_model")
@@ -29,19 +29,20 @@ def evaluate_model(model: PPO, env: gym.Env, episodes: int = 10) -> None:
         episode_reward = 0
         steps = 0
         
-        # variables for plotting
+        # Initialize tracking lists
         ee_positions = []
         target_positions = []
         distances = []
         torques = []
+        torques_sqr = []
         times = []
         
         while not done:
             action, _state = model.predict(obs, deterministic=True)
             torques.append(action)
+            torques_sqr.append(action ** 2)
             obs, reward, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
-            
             
             # Track data
             ee_pos = get_end_effector_pos(env)
@@ -51,9 +52,8 @@ def evaluate_model(model: PPO, env: gym.Env, episodes: int = 10) -> None:
             target_positions.append(target_pos)
             distances.append(np.linalg.norm(ee_pos - target_pos))
             times.append(steps)
-            
-            
             steps += 1
+            
             if abs(obs[8]) < 0.01 and abs(obs[9]) < 0.01:
                 print("num of steps: ", steps)
                 done = True
@@ -62,12 +62,13 @@ def evaluate_model(model: PPO, env: gym.Env, episodes: int = 10) -> None:
             
         total_rewards.append(episode_reward)
         print(f"Episode {ep + 1}: Total Reward: {episode_reward:.2f}")
-        
-        # Convert to numpy arrays
+
+        # Convert to numpy arrays for plotting
         ee_positions = np.array(ee_positions)
         target_positions = np.array(target_positions)
         distances = np.array(distances)
         torques = np.array(torques)
+        torques_sqr = np.array(torques_sqr)
         times = np.array(times)
 
         # Plotting
@@ -110,14 +111,16 @@ def evaluate_model(model: PPO, env: gym.Env, episodes: int = 10) -> None:
 
         plt.tight_layout()
         plt.savefig(os.path.join(ALGO_DIR, f'episode_{ep + 1}_analysis.png'))
- 
+
     env.close()
     print(f"\nAverage Reward over {episodes} episodes: {np.mean(total_rewards):.2f}")
     print(f"Standard Deviation: {np.std(total_rewards):.2f}")
 
 def main():
-    env = gym.make("Reacher-v5", render_mode="human")
-
+    # Added seeding
+    SEED = 42
+    env = gym.make("Reacher-v5", render_mode="human") # max_episode_steps
+    env.reset(seed=SEED)
     try:
         model = PPO.load(MODEL_PATH)
     except FileNotFoundError:

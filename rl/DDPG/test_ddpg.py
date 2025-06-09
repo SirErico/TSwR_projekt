@@ -29,17 +29,18 @@ def evaluate_model(model: DDPG, env: gym.Env, episodes: int = 10) -> None:
         episode_reward = 0
         steps = 0
         
-        
         # Initialize tracking lists
         ee_positions = []
         target_positions = []
         distances = []
-        joint_angles = []
-        joint_velocities = []
+        torques = []
+        torques_sqr = []
         times = []
         
         while not done:
             action, _state = model.predict(obs, deterministic=True)
+            torques.append(action)
+            torques_sqr.append(action ** 2)
             obs, reward, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
             
@@ -50,10 +51,7 @@ def evaluate_model(model: DDPG, env: gym.Env, episodes: int = 10) -> None:
             ee_positions.append(ee_pos)
             target_positions.append(target_pos)
             distances.append(np.linalg.norm(ee_pos - target_pos))
-            joint_angles.append(env.unwrapped.data.qpos[:2].copy())
-            joint_velocities.append(env.unwrapped.data.qvel[:2].copy())
             times.append(steps)
-            
             steps += 1
             
             if abs(obs[8]) < 0.01 and abs(obs[9]) < 0.01:
@@ -65,64 +63,64 @@ def evaluate_model(model: DDPG, env: gym.Env, episodes: int = 10) -> None:
         total_rewards.append(episode_reward)
         print(f"Episode {ep + 1}: Total Reward: {episode_reward:.2f}")
 
-
         # Convert to numpy arrays for plotting
         ee_positions = np.array(ee_positions)
         target_positions = np.array(target_positions)
         distances = np.array(distances)
-        joint_angles = np.array(joint_angles)
-        joint_velocities = np.array(joint_velocities)
+        torques = np.array(torques)
+        torques_sqr = np.array(torques_sqr)
+        times = np.array(times)
         
-        # Create visualization
+        # Plotting
         fig, axs = plt.subplots(2, 2, figsize=(15, 10))
         
-        # Plot trajectory
-        axs[0,0].plot(ee_positions[:,0], ee_positions[:,1], 'b-', label='End-effector')
-        axs[0,0].plot(target_positions[:,0], target_positions[:,1], 'r*', label='Target')
-        axs[0,0].set_title('End-effector Trajectory')
-        axs[0,0].set_xlabel('X Position')
-        axs[0,0].set_ylabel('Y Position')
-        axs[0,0].legend()
-        axs[0,0].grid(True)
-        
-        # Plot distance to target
-        axs[0,1].plot(times, distances)
-        axs[0,1].set_title('Distance to Target')
-        axs[0,1].set_xlabel('Time steps')
-        axs[0,1].set_ylabel('Distance')
-        axs[0,1].grid(True)
-        
-        # Plot joint angles
-        axs[1,0].plot(times, joint_angles[:,0], label='q1')
-        axs[1,0].plot(times, joint_angles[:,1], label='q2')
-        axs[1,0].set_title('Joint Angles')
-        axs[1,0].set_xlabel('Time steps')
-        axs[1,0].set_ylabel('Angle (rad)')
-        axs[1,0].legend()
-        axs[1,0].grid(True)
-        
-        # Plot joint velocities
-        axs[1,1].plot(times, joint_velocities[:,0], label='q1_dot')
-        axs[1,1].plot(times, joint_velocities[:,1], label='q2_dot')
-        axs[1,1].set_title('Joint Velocities')
-        axs[1,1].set_xlabel('Time steps')
-        axs[1,1].set_ylabel('Velocity (rad/s)')
-        axs[1,1].legend()
-        axs[1,1].grid(True)
-        
+        # (0, 0): End-effector trajectory
+        axs[0, 0].plot(ee_positions[:, 0], ee_positions[:, 1], 'b-', label='End-effector')
+        axs[0, 0].plot(target_positions[:, 0], target_positions[:, 1], 'r*', label='Target')
+        axs[0, 0].set_title('End-effector Trajectory')
+        axs[0, 0].set_xlabel('X Position')
+        axs[0, 0].set_ylabel('Y Position')
+        axs[0, 0].legend()
+        axs[0, 0].grid(True)
+
+        # (0, 1): Distance to target over time
+        axs[0, 1].plot(times, distances, 'g-')
+        axs[0, 1].set_title('Distance to Target')
+        axs[0, 1].set_xlabel('Time Step')
+        axs[0, 1].set_ylabel('Distance')
+        axs[0, 1].grid(True)
+
+        # (1, 0): Torques applied over time
+        axs[1, 0].plot(times, torques[:, 0], label='Joint 1')
+        axs[1, 0].plot(times, torques[:, 1], label='Joint 2')
+        axs[1, 0].set_title('Torques Applied')
+        axs[1, 0].set_xlabel('Time Step')
+        axs[1, 0].set_ylabel('Torque')
+        axs[1, 0].legend()
+        axs[1, 0].grid(True)
+
+        # (1, 1): Cumulative torque usage
+        cumulative_torque = np.cumsum(np.abs(torques), axis=0)
+        axs[1, 1].plot(times, cumulative_torque[:, 0], label='Cumulative Joint 1')
+        axs[1, 1].plot(times, cumulative_torque[:, 1], label='Cumulative Joint 2')
+        axs[1, 1].set_title('Cumulative Torque Over Time')
+        axs[1, 1].set_xlabel('Time Step')
+        axs[1, 1].set_ylabel('Cumulative |Torque|')
+        axs[1, 1].legend()
+        axs[1, 1].grid(True)
+
         plt.tight_layout()
-        plt.savefig(os.path.join(ALGO_DIR, f'episode_{ep+1}_analysis.png'))
-        plt.show()
+        plt.savefig(os.path.join(ALGO_DIR, f'episode_{ep + 1}_analysis.png'))
 
     env.close()
-    
-    
     print(f"\nAverage Reward over {episodes} episodes: {np.mean(total_rewards):.2f}")
     print(f"Standard Deviation: {np.std(total_rewards):.2f}")
 
 def main():
-    env = gym.make("Reacher-v5", render_mode="human")
-
+    # Added seeding
+    SEED = 42
+    env = gym.make("Reacher-v5", render_mode="human") # max_episode_steps
+    env.reset(seed=SEED)
     try:
         model = DDPG.load(MODEL_PATH)
     except FileNotFoundError:
