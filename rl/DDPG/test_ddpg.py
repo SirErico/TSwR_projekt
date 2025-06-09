@@ -37,10 +37,8 @@ def evaluate_model(model: DDPG, env: gym.Env, episodes: int = 10) -> None:
         joint_angles = []
         joint_velocities = []
         times = []
-        t = 0
         
         while not done:
-            steps += 1
             action, _state = model.predict(obs, deterministic=True)
             obs, reward, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
@@ -54,9 +52,9 @@ def evaluate_model(model: DDPG, env: gym.Env, episodes: int = 10) -> None:
             distances.append(np.linalg.norm(ee_pos - target_pos))
             joint_angles.append(env.unwrapped.data.qpos[:2].copy())
             joint_velocities.append(env.unwrapped.data.qvel[:2].copy())
-            times.append(t)
+            times.append(steps)
             
-            t += 1
+            steps += 1
             
             if abs(obs[8]) < 0.01 and abs(obs[9]) < 0.01:
                 print("num of steps: ", steps)
