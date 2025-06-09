@@ -2,6 +2,7 @@ import gymnasium as gym
 import numpy as np
 import time
 import matplotlib.pyplot as plt
+import seaborn as sns
 import os
 
 ALGO_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -35,6 +36,14 @@ def inverse_kinematics(xy_target, l1=0.1, l2=0.1):
     k1 = l1 + l2 * np.cos(q2)
     q1 = np.arctan2(y, x) - np.arctan2(k2, k1)
     return np.array([q1, q2])
+
+def get_end_effector_pos(q):
+    """Calculate end-effector position using forward kinematics."""
+    l1, l2 = 0.1, 0.1  # Link lengths
+    q1, q2 = q
+    x = l1*np.cos(q1) + l2*np.cos(q1 + q2)
+    y = l1*np.sin(q1) + l2*np.sin(q1 + q2)
+    return np.array([x, y])
 
 def ret_y(y, speed1, speed2 = -50000.0):
     if speed2 == -50000.0:
@@ -106,7 +115,7 @@ def feedback_linearization_control():
     np.set_printoptions(legacy='1.25') # Print bez  float64
     # ESTIMATED VALUES
     alpha, beta, gamma = 0.00263468, 0.00009852, 0.0013667 # 0.00263468, 0.00009852, 0.00013667 / 0.00254362, 0.00001777, 0.00029786
-    SEED = 42
+    SEED = 1
 
     env = gym.make("Reacher-v5", max_episode_steps=150, render_mode="human")
     env.reset(seed=SEED)
@@ -120,18 +129,16 @@ def feedback_linearization_control():
     episodes = 10
     
     # Initialize tracking lists
-    ee_positions = []
-    target_positions = []
-    distances = []
     torques = []
     torques_sqr = []
-    times = []
     total_rewards = []
-    episode_torque_sum = []
+    episode_costs = []
 
     for ep in range(episodes):
+        distances = []
         episode_torques_noclip = []
         episode_reward = 0
+        episode_cost = 0.0
         steps = 0
         obs, _ = env.reset()
         
@@ -145,9 +152,10 @@ def feedback_linearization_control():
         print(obs[8], obs[9])
         
         q_start = env.unwrapped.data.qpos[:2].copy()
-        q_r_all, q_r_dot_all, q_r_ddot_all = generate_trajectory(q_start, ik_result, T=0.1, dt=dt)
+        q_r_all, q_r_dot_all, q_r_ddot_all = generate_trajectory(q_start, ik_result, T=0.25, dt=dt)
         """
         0.1 definitely too fast. tau gets too big
+        around 0.25?
         """
         
         while not done:
@@ -165,10 +173,6 @@ def feedback_linearization_control():
 
             v = q_r_ddot + Kd @ (q_r_dot - q_dot) + Kp @ (q_r - q)  # control
             # v = q_r_dot
-            # print("\nTarget position: ")
-            # print(goal)
-            # print("V: ")
-            # print(v)
             # Compute dynamics
             M = M_hat(q, alpha, beta, gamma)
             C = C_hat(q, q_dot, alpha, beta, gamma)
@@ -176,9 +180,10 @@ def feedback_linearization_control():
             # Final torque
             tau_noclip = M @ v + C @ q_dot
             episode_torques_noclip.append(tau_noclip)  # Store unclipped torque
-
-            print("TAU ZA DUZE", tau_noclip)
-
+            
+            # Liczenie kosztu energetycznego (energia = ∑ |tau ⋅ q_dot| * dt)
+            step_cost = np.abs(np.dot(tau_noclip, q_dot)) * dt
+            episode_cost += step_cost
 
             # Clip to action space limits
             tau = np.clip(tau_noclip, env.action_space.low, env.action_space.high)
@@ -186,6 +191,10 @@ def feedback_linearization_control():
             torques_sqr.append(tau ** 2)
 
             obs, reward, terminated, truncated, info = env.step(tau)
+            ee_pos = get_end_effector_pos(q)
+            target_pos = np.array([obs[4], obs[5]])  # Correct target position from observation
+            dist = np.linalg.norm(ee_pos - target_pos)
+            distances.append(dist)
             """
             if terminated or truncated:
                 print("How close to the target: x, y")
@@ -202,10 +211,11 @@ def feedback_linearization_control():
             # if terminated or truncated:
             #     break
         total_rewards.append(episode_reward)
+        episode_costs.append(episode_cost)
         print(f"Episode {ep + 1}: Total Reward: {episode_reward:.2f}")
         # Here plots for each episode :)
         
-                # After episode ends, create plots
+        # After episode ends, create plots
         episode_torques_noclip = np.array(episode_torques_noclip)
         time_steps = np.arange(len(episode_torques_noclip))
         
@@ -222,24 +232,39 @@ def feedback_linearization_control():
         ax1.legend()
         ax1.grid(True)
         
-        # Plot clipped vs unclipped comparison for each joint
-        ax2.plot(time_steps, episode_torques_noclip[:, 0], 'b-', alpha=0.5, label='Unclipped Joint 1')
-        ax2.plot(time_steps, episode_torques_noclip[:, 1], 'r-', alpha=0.5, label='Unclipped Joint 2')
-        ax2.plot(time_steps, np.clip(episode_torques_noclip[:, 0], -1, 1), 'b--', label='Clipped Joint 1')
-        ax2.plot(time_steps, np.clip(episode_torques_noclip[:, 1], -1, 1), 'r--', label='Clipped Joint 2')
-        ax2.set_title('Clipped vs Unclipped Torques')
-        ax2.set_xlabel('Time Steps')
-        ax2.set_ylabel('Torque (N⋅m)')
-        ax2.legend()
+        # Plot DISTANCE
+        ax2.plot(time_steps, distances, 'g-')
+        ax2.set_title('Distance to Target')
+        ax2.set_xlabel('Time Step')
+        ax2.set_ylabel('Distance')
         ax2.grid(True)
         
         plt.tight_layout()
         plt.savefig(os.path.join(ALGO_DIR, f'torques_episode_{ep + 1}.png'))
         plt.close()
-        
-        episode_torque_sum.append(np.sum(np.abs(torques), axis=0))
+
+        for i, j in episode_torques_noclip:
+            if abs(i) >= 1.0 or abs(j) >= 1.0:
+                print(f"Episode {ep + 1} has torques exceeding limits: {i}, {j}")
 
     env.close()
+
+    # Create bar chart for episode costs
+    plt.figure(figsize=(12, 6))
+    episodes_range = np.arange(1, episodes + 1)
+    plt.bar(episodes_range, episode_costs, color='skyblue', edgecolor='navy')
+    plt.title("Koszt energetyczny (τ·ω) dla każdego epizodu")
+    plt.xlabel("Numer epizodu")
+    plt.ylabel("Całkowity koszt energetyczny")
+    
+    # Add value labels on top of each bar
+    for i, cost in enumerate(episode_costs):
+        plt.text(i + 1, cost, f'{cost:.2f}', ha='center', va='bottom')
+    
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(ALGO_DIR, 'energy_cost_barchart.png'))
+    plt.close()
 
     print(f"\nAverage Reward over {episodes} episodes: {np.mean(total_rewards):.2f}")
     print(f"Standard Deviation: {np.std(total_rewards):.2f}")
@@ -248,11 +273,6 @@ if __name__ == "__main__":
     feedback_linearization_control()
     
 """
-Dodać trajektorie
-jak szybko znalezione 
-jaki był koszt
-
-trajectory
 # check different T and the smallest taus/q_ddot?
 # tau nie wychodzi poza 1 (10 testow)
 
