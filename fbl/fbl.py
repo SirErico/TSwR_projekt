@@ -1,6 +1,10 @@
 import gymnasium as gym
 import numpy as np
 import time
+import matplotlib.pyplot as plt
+import os
+
+ALGO_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def M_hat(q, alpha, beta, gamma):
     q2 = q[1]
@@ -75,7 +79,8 @@ def q_r_dot_simple_traj(dist, y, steps, first_step, max_step, breaking, speed):
     else:
         return ret_y(y, speed)
 
-
+# check different T and the smallest taus/q_ddot?
+# tau nie wychodzi poza 1 (10 testow)
 def generate_trajectory(q_start, q_goal, T, dt):
     steps = int(T / dt)
     time_array = np.linspace(0, T, steps)
@@ -101,8 +106,10 @@ def feedback_linearization_control():
     np.set_printoptions(legacy='1.25') # Print bez  float64
     # ESTIMATED VALUES
     alpha, beta, gamma = 0.00263468, 0.00009852, 0.0013667 # 0.00263468, 0.00009852, 0.00013667 / 0.00254362, 0.00001777, 0.00029786
+    SEED = 42
 
     env = gym.make("Reacher-v5", max_episode_steps=150, render_mode="human")
+    env.reset(seed=SEED)
     # could get the target from the wrapper
     # goal_pos = env.unwrapped.get_body_com("target")
 
@@ -111,10 +118,23 @@ def feedback_linearization_control():
     Kp = np.diag([30, 30])
     Kd = np.diag([10, 10])
     episodes = 10
+    
+    # Initialize tracking lists
+    ee_positions = []
+    target_positions = []
+    distances = []
+    torques = []
+    torques_sqr = []
+    times = []
+    total_rewards = []
+    episode_torque_sum = []
+
     for ep in range(episodes):
+        episode_torques_noclip = []
         episode_reward = 0
         steps = 0
         obs, _ = env.reset()
+        
         done = False
         goal = (obs[4], obs[5])
         ik_result = inverse_kinematics(goal)
@@ -125,7 +145,10 @@ def feedback_linearization_control():
         print(obs[8], obs[9])
         
         q_start = env.unwrapped.data.qpos[:2].copy()
-        q_r_all, q_r_dot_all, q_r_ddot_all = generate_trajectory(q_start, ik_result, T=1.5, dt=dt)
+        q_r_all, q_r_dot_all, q_r_ddot_all = generate_trajectory(q_start, ik_result, T=0.1, dt=dt)
+        """
+        0.1 definitely too fast. tau gets too big
+        """
         
         while not done:
             q = env.unwrapped.data.qpos[:2].copy()
@@ -151,12 +174,16 @@ def feedback_linearization_control():
             C = C_hat(q, q_dot, alpha, beta, gamma)
 
             # Final torque
-            tau = M @ v + C @ q_dot
-            # print("Tau: ")
-            # print(tau)
+            tau_noclip = M @ v + C @ q_dot
+            episode_torques_noclip.append(tau_noclip)  # Store unclipped torque
+
+            print("TAU ZA DUZE", tau_noclip)
+
 
             # Clip to action space limits
-            tau = np.clip(tau, env.action_space.low, env.action_space.high)
+            tau = np.clip(tau_noclip, env.action_space.low, env.action_space.high)
+            torques.append(abs(tau))
+            torques_sqr.append(tau ** 2)
 
             obs, reward, terminated, truncated, info = env.step(tau)
             """
@@ -174,9 +201,48 @@ def feedback_linearization_control():
 
             # if terminated or truncated:
             #     break
+        total_rewards.append(episode_reward)
         print(f"Episode {ep + 1}: Total Reward: {episode_reward:.2f}")
+        # Here plots for each episode :)
+        
+                # After episode ends, create plots
+        episode_torques_noclip = np.array(episode_torques_noclip)
+        time_steps = np.arange(len(episode_torques_noclip))
+        
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
+        
+        # Plot unclipped torques
+        ax1.plot(time_steps, episode_torques_noclip[:, 0], 'b-', label='Joint 1')
+        ax1.plot(time_steps, episode_torques_noclip[:, 1], 'r-', label='Joint 2')
+        ax1.axhline(y=1.0, color='k', linestyle='--', alpha=0.3)
+        ax1.axhline(y=-1.0, color='k', linestyle='--', alpha=0.3)
+        ax1.set_title('Unclipped Torques Over Time')
+        ax1.set_xlabel('Time Steps')
+        ax1.set_ylabel('Torque (N⋅m)')
+        ax1.legend()
+        ax1.grid(True)
+        
+        # Plot clipped vs unclipped comparison for each joint
+        ax2.plot(time_steps, episode_torques_noclip[:, 0], 'b-', alpha=0.5, label='Unclipped Joint 1')
+        ax2.plot(time_steps, episode_torques_noclip[:, 1], 'r-', alpha=0.5, label='Unclipped Joint 2')
+        ax2.plot(time_steps, np.clip(episode_torques_noclip[:, 0], -1, 1), 'b--', label='Clipped Joint 1')
+        ax2.plot(time_steps, np.clip(episode_torques_noclip[:, 1], -1, 1), 'r--', label='Clipped Joint 2')
+        ax2.set_title('Clipped vs Unclipped Torques')
+        ax2.set_xlabel('Time Steps')
+        ax2.set_ylabel('Torque (N⋅m)')
+        ax2.legend()
+        ax2.grid(True)
+        
+        plt.tight_layout()
+        plt.savefig(os.path.join(ALGO_DIR, f'torques_episode_{ep + 1}.png'))
+        plt.close()
+        
+        episode_torque_sum.append(np.sum(np.abs(torques), axis=0))
 
     env.close()
+
+    print(f"\nAverage Reward over {episodes} episodes: {np.mean(total_rewards):.2f}")
+    print(f"Standard Deviation: {np.std(total_rewards):.2f}")
     
 if __name__ == "__main__":
     feedback_linearization_control()
@@ -185,5 +251,14 @@ if __name__ == "__main__":
 Dodać trajektorie
 jak szybko znalezione 
 jaki był koszt
+
+trajectory
+# check different T and the smallest taus/q_ddot?
+# tau nie wychodzi poza 1 (10 testow)
+
+zużycie energii całkowite
+całkowanie mocy
+boxploty (tau, tau**, moc, czas)
+pobrać csv
 
 """

@@ -22,7 +22,6 @@ def get_end_effector_pos(env):
 
 def evaluate_model(model: DDPG, env: gym.Env, episodes: int = 10) -> None:
     total_rewards = []
-
     for ep in range(episodes):
         obs, _ = env.reset()
         done = False
@@ -111,8 +110,8 @@ def evaluate_model(model: DDPG, env: gym.Env, episodes: int = 10) -> None:
 
         plt.tight_layout()
         plt.savefig(os.path.join(ALGO_DIR, f'episode_{ep + 1}_analysis.png'))
-
-    env.close()
+        plt.close(fig)     
+    env.close()    
     print(f"\nAverage Reward over {episodes} episodes: {np.mean(total_rewards):.2f}")
     print(f"Standard Deviation: {np.std(total_rewards):.2f}")
 
