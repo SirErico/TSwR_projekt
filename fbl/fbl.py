@@ -8,11 +8,8 @@ import os
 
 ALGO_DIR = os.path.dirname(os.path.abspath(__file__))
 
-
-# CONFIGURATION
 # Configuration
-SEED = 1
-DT = 0.01  # Default timestep
+SEED = 42
 MAX_STEPS = 150
 LINK_LENGTH = 0.1 # link lengths (0.1) from mujoco docs 
 GLOBAL_T = [0.25]
@@ -131,7 +128,7 @@ def feedback_linearization_control():
             0.1 definitely too fast. tau gets too big
             around 0.25?
             """
-            while steps < MAX_STEPS:
+            while not done and steps < MAX_STEPS:
                 q = env.unwrapped.data.qpos[:2].copy()
                 q_dot = env.unwrapped.data.qvel[:2].copy()
                 
@@ -150,15 +147,14 @@ def feedback_linearization_control():
                 M = M_hat(q, ALPHA, BETA, GAMMA)
                 C = C_hat(q, q_dot, ALPHA, BETA, GAMMA)
 
-
                 # Final torque
                 tau_noclip = M @ v + C @ q_dot
                 
                 # Liczenie kosztu energetycznego (energia =  |tau ⋅ q_dot| * dt)
-                step_cost = np.abs(np.dot(tau_noclip, q_dot)) * dt
-                episode_cost += step_cost
                 power = np.abs(np.dot(tau_noclip, q_dot))
-
+                step_cost = power * dt
+                episode_cost += step_cost
+                
                 # Clip to action space limits
                 tau = np.clip(tau_noclip, env.action_space.low, env.action_space.high)
                 if np.any(np.abs(tau) > 1.0):
@@ -182,12 +178,12 @@ def feedback_linearization_control():
                 #done = terminated or truncated
                 if dist < 0.01 and np.all(np.abs(q_dot) < 0.1):
                     print(f"T={T}, Episode {ep+1}: Reached the goal in {steps} steps.")
-                    # done = True
-                    break
+                    done = True
+                elif steps >= MAX_STEPS:
+                    print(f"T={T}, Episode {ep+1}: Max steps reached without convergence.")
+                    done = True
 
                 time.sleep(0.01)  #
-                # if terminated or truncated:
-                #     break
 
             episode_data.append({
                 'T': T,
@@ -197,9 +193,6 @@ def feedback_linearization_control():
                 'energy_cost': episode_cost,
                 'torque_violations': torque_violations
             })
-            all_torques.extend(np.abs(episode_torques))
-            all_torques_sqr.extend(episode_torques_sqr)
-            all_powers.extend(episode_powers)
             total_rewards.append(episode_reward)  # Add this line to track rewards
         
             print(f"Episode {ep + 1}: Total Reward: {episode_reward:.2f}")
