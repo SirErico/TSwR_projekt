@@ -3,9 +3,22 @@ import numpy as np
 import time
 import matplotlib.pyplot as plt
 import seaborn as sns
+import pandas as pd
 import os
 
 ALGO_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+# CONFIGURATION
+# Configuration
+SEED = 1
+DT = 0.01  # Default timestep
+MAX_STEPS = 150
+LINK_LENGTH = 0.1 # link lengths (0.1) from mujoco docs 
+GLOBAL_T = [0.25]
+KP = np.diag([30, 30])
+KD = np.diag([10, 10])
+ALPHA, BETA, GAMMA = 0.00263468, 0.00009852, 0.0013667
 
 def M_hat(q, alpha, beta, gamma):
     q2 = q[1]
@@ -25,8 +38,7 @@ def C_hat(q, q_dot, alpha, beta, gamma):
     c22 = 0
     return np.array([[c11, c12], [c21, c22]])
 
-# link lengths (0.1) from mujoco docs 
-def inverse_kinematics(xy_target, l1=0.1, l2=0.1):
+def inverse_kinematics(xy_target, l1=LINK_LENGTH, l2=LINK_LENGTH):
     x, y = xy_target
     D = (x**2 + y**2 - l1**2 - l2**2) / (2 * l1 * l2)
     if np.abs(D) > 1.0:
@@ -37,16 +49,13 @@ def inverse_kinematics(xy_target, l1=0.1, l2=0.1):
     q1 = np.arctan2(y, x) - np.arctan2(k2, k1)
     return np.array([q1, q2])
 
-def get_end_effector_pos(q):
-    """Calculate end-effector position using forward kinematics."""
-    l1, l2 = 0.1, 0.1  # Link lengths
+def get_end_effector_pos(q, l1= LINK_LENGTH, l2=LINK_LENGTH):
+    """Calculate end-effector position using forward kinematics."""  # Link lengths
     q1, q2 = q
     x = l1*np.cos(q1) + l2*np.cos(q1 + q2)
     y = l1*np.sin(q1) + l2*np.sin(q1 + q2)
     return np.array([x, y])
 
-# check different T and the smallest taus/q_ddot?
-# tau nie wychodzi poza 1 (10 testow)
 def generate_trajectory(q_start, q_goal, T, dt):
     steps = int(T / dt)
     time_array = np.linspace(0, T, steps)
@@ -71,7 +80,7 @@ def generate_trajectory(q_start, q_goal, T, dt):
 def feedback_linearization_control():
     np.set_printoptions(legacy='1.25') # Print bez  float64
     # ESTIMATED VALUES
-    alpha, beta, gamma = 0.00263468, 0.00009852, 0.0013667 # 0.00263468, 0.00009852, 0.00013667 / 0.00254362, 0.00001777, 0.00029786
+    # alpha, beta, gamma = 0.00263468, 0.00009852, 0.0013667 # 0.00263468, 0.00009852, 0.00013667 / 0.00254362, 0.00001777, 0.00029786
     SEED = 1
 
     env = gym.make("Reacher-v5", max_episode_steps=150, render_mode="human")
@@ -81,149 +90,208 @@ def feedback_linearization_control():
 
     dt = env.unwrapped.model.opt.timestep
 
-    Kp = np.diag([30, 30])
-    Kd = np.diag([10, 10])
+    Kp = KP
+    Kd = KD
     episodes = 10
     
+    # TESTING
+    T_values = GLOBAL_T # Different time durations for trajectory generation
+    
     # Initialize tracking lists
-    torques = []
-    torques_sqr = []
+    episode_data = []
+    all_torques = []
+    all_torques_sqr = []
+    all_powers = []
     total_rewards = []
-    episode_costs = []
 
-    for ep in range(episodes):
-        distances = []
-        episode_torques_noclip = []
-        episode_reward = 0
-        episode_cost = 0.0
-        steps = 0
-        obs, _ = env.reset()
-        
-        done = False
-        goal = (obs[4], obs[5])
-        ik_result = inverse_kinematics(goal)
-        if ik_result is None:
-            print("Goal unavailable!")
-            continue
-        print("\nTarget position: ")
-        print(obs[8], obs[9])
-        
-        q_start = env.unwrapped.data.qpos[:2].copy()
-        q_r_all, q_r_dot_all, q_r_ddot_all = generate_trajectory(q_start, ik_result, T=0.25, dt=dt)
-        """
-        0.1 definitely too fast. tau gets too big
-        around 0.25?
-        """
-        while not done:
-            q = env.unwrapped.data.qpos[:2].copy()
-            q_dot = env.unwrapped.data.qvel[:2].copy()
+    for T in T_values:
+        for ep in range(episodes):
+            episode_distances = []
+            episode_torques_noclip = []
+            episode_torques = []
+            episode_torques_sqr = []
+            episode_powers = []
+            episode_reward = 0
+            episode_cost = 0.0
+            steps = 0
+            torque_violations = 0
+            obs, _ = env.reset()
             
-            if steps < len(q_r_all):
-                q_r = q_r_all[steps]
-                q_r_dot = q_r_dot_all[steps]
-                q_r_ddot = q_r_ddot_all[steps]
-            else:
-                q_r = ik_result
-                q_r_dot = np.zeros(2)
-                q_r_ddot = np.zeros(2)
+            done = False
+            goal = (obs[4], obs[5])
+            ik_result = inverse_kinematics(goal)
+            if ik_result is None:
+                print(f"T={T}, Episode {ep+1}: Goal unavailable!")
+                continue
 
-            v = q_r_ddot + Kd @ (q_r_dot - q_dot) + Kp @ (q_r - q)  # control
-            # v = q_r_dot
-            # Compute dynamics
-            M = M_hat(q, alpha, beta, gamma)
-            C = C_hat(q, q_dot, alpha, beta, gamma)
-
-            # Final torque
-            tau_noclip = M @ v + C @ q_dot
-            episode_torques_noclip.append(tau_noclip)  # Store unclipped torque
             
-            # Liczenie kosztu energetycznego (energia =  |tau ⋅ q_dot| * dt)
-            step_cost = np.abs(np.dot(tau_noclip, q_dot)) * dt
-            episode_cost += step_cost
-
-            # Clip to action space limits
-            tau = np.clip(tau_noclip, env.action_space.low, env.action_space.high)
-            torques.append(abs(tau))
-            torques_sqr.append(tau ** 2)
-
-            obs, reward, terminated, truncated, info = env.step(tau)
-            ee_pos = get_end_effector_pos(q)
-            target_pos = np.array([obs[4], obs[5]])  # Correct target position from observation
-            dist = np.linalg.norm(ee_pos - target_pos)
-            distances.append(dist)
+            q_start = env.unwrapped.data.qpos[:2].copy()
+            q_r_all, q_r_dot_all, q_r_ddot_all = generate_trajectory(q_start, ik_result, T, dt=dt)
             """
-            if terminated or truncated:
-                print("How close to the target: x, y")
-                print(obs[8], obs[9])
+            0.1 definitely too fast. tau gets too big
+            around 0.25?
             """
-            #done = terminated or truncated
-            if np.linalg.norm([obs[8], obs[9]]) < 0.01 and abs(q_dot[0]) < 0.1 and abs(q_dot[1]) < 0.1:
-                print(f"Reached the goal in {steps} steps.")
-                done = True
-            steps += 1
-            time.sleep(0.01)  #
-            episode_reward += reward
+            while steps < MAX_STEPS:
+                q = env.unwrapped.data.qpos[:2].copy()
+                q_dot = env.unwrapped.data.qvel[:2].copy()
+                
+                if steps < len(q_r_all):
+                    q_r = q_r_all[steps]
+                    q_r_dot = q_r_dot_all[steps]
+                    q_r_ddot = q_r_ddot_all[steps]
+                else:
+                    q_r = ik_result
+                    q_r_dot = np.zeros(2)
+                    q_r_ddot = np.zeros(2)
 
-            # if terminated or truncated:
-            #     break
-        total_rewards.append(episode_reward)
-        episode_costs.append(episode_cost)
-        print(f"Episode {ep + 1}: Total Reward: {episode_reward:.2f}")
-        # Here plots for each episode :)
-        
-        episode_torques_noclip = np.array(episode_torques_noclip)
-        time_steps = np.arange(len(episode_torques_noclip))
-        
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
-        
-        # Plot unclipped torques
-        ax1.plot(time_steps, episode_torques_noclip[:, 0], 'b-', label='Joint 1')
-        ax1.plot(time_steps, episode_torques_noclip[:, 1], 'r-', label='Joint 2')
-        ax1.axhline(y=1.0, color='k', linestyle='--', alpha=0.3)
-        ax1.axhline(y=-1.0, color='k', linestyle='--', alpha=0.3)
-        ax1.set_title('Unclipped Torques Over Time')
-        ax1.set_xlabel('Time Steps')
-        ax1.set_ylabel('Torque (N⋅m)')
-        ax1.legend()
-        ax1.grid(True)
-        
-        # Plot DISTANCE
-        ax2.plot(time_steps, distances, 'g-')
-        ax2.set_title('Distance to Target')
-        ax2.set_xlabel('Time Step')
-        ax2.set_ylabel('Distance')
-        ax2.grid(True)
-        
-        plt.tight_layout()
-        plt.savefig(os.path.join(ALGO_DIR, f'torques_episode_{ep + 1}.png'))
-        plt.close()
+                v = q_r_ddot + Kd @ (q_r_dot - q_dot) + Kp @ (q_r - q)  # control
+                # v = q_r_dot
+                # Compute dynamics
+                M = M_hat(q, ALPHA, BETA, GAMMA)
+                C = C_hat(q, q_dot, ALPHA, BETA, GAMMA)
 
-        for i, j in episode_torques_noclip:
-            if abs(i) >= 1.0 or abs(j) >= 1.0:
-                print(f"Episode {ep + 1} has torques exceeding limits: {i}, {j}")
 
-    env.close()
+                # Final torque
+                tau_noclip = M @ v + C @ q_dot
+                
+                # Liczenie kosztu energetycznego (energia =  |tau ⋅ q_dot| * dt)
+                step_cost = np.abs(np.dot(tau_noclip, q_dot)) * dt
+                episode_cost += step_cost
+                power = np.abs(np.dot(tau_noclip, q_dot))
 
+                # Clip to action space limits
+                tau = np.clip(tau_noclip, env.action_space.low, env.action_space.high)
+                if np.any(np.abs(tau) > 1.0):
+                    torque_violations += 1
+                    print(f"Episode {ep + 1}, Step {steps}: Torque violation: {tau}")
+                    
+                episode_torques_noclip.append(tau_noclip)  # Store unclipped torque
+                episode_torques.append(abs(tau))
+                episode_torques_sqr.append(tau ** 2)
+                episode_powers.append(power)
+
+                obs, reward, terminated, truncated, info = env.step(tau)
+                ee_pos = get_end_effector_pos(q)
+                target_pos = np.array([obs[4], obs[5]])  # Correct target position from observation
+                dist = np.linalg.norm(ee_pos - target_pos)
+                episode_distances.append(dist)
+                
+                steps += 1
+                episode_reward += reward
+  
+                #done = terminated or truncated
+                if dist < 0.01 and np.all(np.abs(q_dot) < 0.1):
+                    print(f"T={T}, Episode {ep+1}: Reached the goal in {steps} steps.")
+                    # done = True
+                    break
+
+                time.sleep(0.01)  #
+                # if terminated or truncated:
+                #     break
+
+            episode_data.append({
+                'T': T,
+                'episode': ep + 1,
+                'steps': steps,
+                'reward': episode_reward,
+                'energy_cost': episode_cost,
+                'torque_violations': torque_violations
+            })
+            all_torques.extend(np.abs(episode_torques))
+            all_torques_sqr.extend(episode_torques_sqr)
+            all_powers.extend(episode_powers)
+            total_rewards.append(episode_reward)  # Add this line to track rewards
+        
+            print(f"Episode {ep + 1}: Total Reward: {episode_reward:.2f}")
+            # Here plots for each episode :)
+            
+            time_steps = np.arange(len(episode_torques_noclip))
+            fig, axes = plt.subplots(3, 1, figsize=(10, 8))
+            
+            # Plot unclipped torques
+            axes[0].plot(time_steps, np.array(episode_torques_noclip)[:, 0], 'b-', label='Joint 1')
+            axes[0].plot(time_steps, np.array(episode_torques_noclip)[:, 1], 'r-', label='Joint 2')
+            axes[0].axhline(y=1.0, color='k', linestyle='--', alpha=0.3)
+            axes[0].axhline(y=-1.0, color='k', linestyle='--', alpha=0.3)
+            axes[0].set_title(f'T={T}, Episode {ep+1}: Unclipped Torques')
+            axes[0].set_xlabel('Time Steps')
+            axes[0].set_ylabel('Torque (N⋅m)')
+            axes[0].legend()
+            axes[0].grid(True)
+            
+            # Distance
+            axes[1].plot(time_steps, episode_distances, 'g-')
+            axes[1].axhline(y=0.01, color='k', linestyle='--', alpha=0.3)
+            axes[1].set_title(f'T={T}, Episode {ep+1}: Distance')
+            axes[1].set_xlabel('Time Steps')
+            axes[1].set_ylabel('Distance (m)')
+            axes[1].grid(True)
+            
+            # Power
+            axes[2].plot(time_steps, episode_powers, 'm-')
+            axes[2].set_title(f'T={T}, Episode {ep+1}: Instantaneous Power')
+            axes[2].set_xlabel('Time Steps')
+            axes[2].set_ylabel('Power (W)')
+            axes[2].grid(True)
+            
+            plt.tight_layout()
+            plt.savefig(os.path.join(ALGO_DIR, f'analysis_{T}_torques_episode_{ep + 1}.png'))
+            plt.close()
+
+            # for i, j in episode_torques_noclip:
+            #     if abs(i) >= 1.0 or abs(j) >= 1.0:
+            #         print(f"Episode {ep + 1} has torques exceeding limits: {i}, {j}")
+
+        env.close()
+
+    df = pd.DataFrame(episode_data)
+    df.to_csv(os.path.join(ALGO_DIR, 'feedback_linearization_results.csv'), index=False)
+
+    plt.figure(figsize=(12, 6))
+    sns.boxplot(x='T', y='energy_cost', data=df)
+    plt.title('Energy Cost vs. Trajectory Duration')
+    plt.xlabel('T (s)')
+    plt.ylabel('Energy Cost')
+    plt.grid(True)
+    plt.savefig(os.path.join(ALGO_DIR, 'energy_boxplot.png'))
+    plt.close()
+    
+    plt.figure(figsize=(12, 6))
+    sns.boxplot(x='T', y='torque_violations', data=df)
+    plt.title('Torque Violations vs. Trajectory Duration')
+    plt.xlabel('T (s)')
+    plt.ylabel('Number of Violations')
+    plt.grid(True)
+    plt.savefig(os.path.join(ALGO_DIR, 'torque_violations_boxplot.png'))
+    plt.close()
+    
     # Create bar chart for episode costs
     plt.figure(figsize=(12, 6))
     episodes_range = np.arange(1, episodes + 1)
-    plt.bar(episodes_range, episode_costs, color='skyblue', edgecolor='navy')
-    plt.title("Koszt energetyczny (τ·ω) dla każdego epizodu")
-    plt.xlabel("Numer epizodu")
-    plt.ylabel("Całkowity koszt energetyczny")
-    
+    energy_costs = [data['energy_cost'] for data in episode_data]  # Extract energy costs from episode data
+
+    plt.bar(episodes_range, energy_costs, color='skyblue', edgecolor='navy')
+    plt.title("Energy Cost per Episode")
+    plt.xlabel("Episode")
+    plt.ylabel("Total Energy Cost (J)")
+
     # Add value labels on top of each bar
-    for i, cost in enumerate(episode_costs):
+    for i, cost in enumerate(energy_costs):
         plt.text(i + 1, cost, f'{cost:.2f}', ha='center', va='bottom')
-    
+
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.savefig(os.path.join(ALGO_DIR, 'energy_cost_barchart.png'))
     plt.close()
-
-    print(f"\nAverage Reward over {episodes} episodes: {np.mean(total_rewards):.2f}")
-    print(f"Standard Deviation: {np.std(total_rewards):.2f}")
     
+    print("\nSummary Statistics:")
+    print(df.groupby('T')[['reward', 'energy_cost', 'torque_violations']].mean())
+    if total_rewards:
+        print(f"\nAverage Reward over {len(total_rewards)} episodes: {np.mean(total_rewards):.2f}")
+        print(f"Standard Deviation: {np.std(total_rewards):.2f}")
+    else:
+        print("\nNo valid rewards collected")  
+        
 if __name__ == "__main__":
     feedback_linearization_control()
     
