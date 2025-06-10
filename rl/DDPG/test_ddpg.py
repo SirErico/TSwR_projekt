@@ -8,7 +8,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 ALGO_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(ALGO_DIR, "models/best_model/best_model_DDPG_2")
+MODEL_PATH = os.path.join(ALGO_DIR, "best_model_DDPG_2")
 ALGORITHM = DDPG
 ALGO_NAME = ALGORITHM.__name__
 

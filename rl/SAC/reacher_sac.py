@@ -64,7 +64,7 @@ model = SAC(
 
 eval_callback = EvalCallback(
     env,
-    best_model_save_path=os.path.join(MODEL_DIR, "best_model"),
+    best_model_save_path=os.path.join(ALGO_DIR, "best_model"),
     log_path=LOG_DIR,
     eval_freq=5000,
     deterministic=True,
