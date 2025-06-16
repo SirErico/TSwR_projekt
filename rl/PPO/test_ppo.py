@@ -65,6 +65,9 @@ def evaluate_model(model: ALGORITHM, env: gym.Env, episodes: int = 10) -> None:
             target_pos = obs[4:6]
             dist = np.linalg.norm(ee_pos - target_pos)
             episode_distances.append(dist)
+            # print("DISTANCE = ", dist)
+            # done = terminated or truncated
+
             
             steps += 1
             episode_reward += reward

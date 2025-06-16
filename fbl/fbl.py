@@ -10,7 +10,7 @@ ALGO_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Configuration
 SEED = 42
-MAX_STEPS = 150
+MAX_STEPS = 50
 LINK_LENGTH = 0.1 # link lengths (0.1) from mujoco docs 
 GLOBAL_T = [0.25]
 KP = np.diag([30, 30])
@@ -86,6 +86,7 @@ def feedback_linearization_control():
     # goal_pos = env.unwrapped.get_body_com("target")
 
     dt = env.unwrapped.model.opt.timestep
+    print("DT",dt) # 0.01
 
     Kp = KP
     Kd = KD
@@ -149,6 +150,9 @@ def feedback_linearization_control():
 
                 # Final torque
                 tau_noclip = M @ v + C @ q_dot
+                if np.any(np.abs(tau_noclip) > 1.0):
+                    torque_violations += 1
+                    print(f"Episode {ep + 1}, Step {steps}: Torque violation: {tau_noclip}")
                 
                 # Liczenie kosztu energetycznego (energia =  |tau ⋅ q_dot| * dt)
                 power = np.abs(np.dot(tau_noclip, q_dot))
@@ -157,9 +161,7 @@ def feedback_linearization_control():
                 
                 # Clip to action space limits
                 tau = np.clip(tau_noclip, env.action_space.low, env.action_space.high)
-                if np.any(np.abs(tau) > 1.0):
-                    torque_violations += 1
-                    print(f"Episode {ep + 1}, Step {steps}: Torque violation: {tau}")
+
                     
                 episode_torques_noclip.append(tau_noclip)  # Store unclipped torque
                 episode_torques.append(abs(tau))
@@ -261,21 +263,27 @@ def feedback_linearization_control():
     # Create bar chart for episode costs
     plt.figure(figsize=(12, 6))
     episodes_range = np.arange(1, episodes + 1)
-    energy_costs = [data['energy_cost'] for data in episode_data]  # Extract energy costs from episode data
 
-    plt.bar(episodes_range, energy_costs, color='skyblue', edgecolor='navy')
-    plt.title("Energy Cost per Episode")
-    plt.xlabel("Episode")
-    plt.ylabel("Total Energy Cost (J)")
+    # Group energy costs by T value
+    for i, T in enumerate(T_values):
+        T_costs = [data['energy_cost'] for data in episode_data if data['T'] == T]
+        offset = i * (1.0/len(T_values))  # Calculate offset for grouped bars
+        x_positions = episodes_range + offset
+        
+        plt.bar(x_positions, 
+                T_costs, 
+                width=1.0/len(T_values), 
+                label=f'T={T}s',
+                alpha=0.8)
 
-    # Add value labels on top of each bar
-    for i, cost in enumerate(energy_costs):
-        plt.text(i + 1, cost, f'{cost:.2f}', ha='center', va='bottom')
-
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(ALGO_DIR, 'energy_cost_barchart.png'))
-    plt.close()
+        plt.title("Energy Cost per Episode")
+        plt.xlabel("Episode")
+        plt.ylabel("Total Energy Cost (J)")
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(os.path.join(ALGO_DIR, f'energy_cost_barchart_{T}.png'))
+        plt.close()
     
     print("\nSummary Statistics:")
     print(df.groupby('T')[['reward', 'energy_cost', 'torque_violations']].mean())
